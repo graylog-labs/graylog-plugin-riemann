@@ -19,7 +19,6 @@
         <maven.compiler.target>1.7</maven.compiler.target>
         <graylog2.version>0.92.3</graylog2.version>
         <graylog2.plugin-dir>/usr/share/graylog2-server/plugin</graylog2.plugin-dir>
-        <guice.version>3.0</guice.version>
     </properties>
 
     <repositories>
@@ -36,16 +35,6 @@
             <artifactId>graylog2-plugin</artifactId>
             <version>${graylog2.version}</version>
             <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.google.inject</groupId>
-            <artifactId>guice</artifactId>
-            <version>${guice.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.inject.extensions</groupId>
-            <artifactId>guice-assistedinject</artifactId>
-            <version>${guice.version}</version>
         </dependency>
         <dependency>
             <groupId>com.aphyr</groupId>
