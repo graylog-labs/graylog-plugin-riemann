@@ -9,15 +9,14 @@ import org.graylog2.plugin.configuration.Configuration;
 import org.graylog2.plugin.configuration.ConfigurationRequest;
 import org.graylog2.plugin.configuration.fields.*;
 import org.graylog2.plugin.outputs.MessageOutput;
+import org.graylog2.plugin.streams.Stream;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.ProtocolException;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -62,7 +61,9 @@ public class RiemannOutput implements MessageOutput{
 
     @Override
     public void write(Message message) throws Exception {
-        Iterator message_fields = message.getFields().entrySet().iterator();
+        Iterator messageFields = message.getFields().entrySet().iterator();
+        Iterator messageStreams = message.getStreams().iterator();
+        List<String> messageStreamNames = new ArrayList<>();
 
         try {
             EventDSL event = riemannClient.event()
@@ -71,9 +72,17 @@ public class RiemannOutput implements MessageOutput{
                     .description(message.getMessage())
                     .ttl(configuration.getInt(CK_EVENT_TTL));
 
+            while (messageStreams.hasNext()) {
+                Stream stream = (Stream) messageStreams.next();
+                messageStreamNames.add(stream.getTitle());
+            }
+            if (! messageStreamNames.isEmpty()) {
+                event.tags(messageStreamNames);
+            }
+
             if (configuration.getBoolean(CK_MAP_FIELDS)) {
-                while (message_fields.hasNext()) {
-                    Map.Entry pair = (Map.Entry) message_fields.next();
+                while (messageFields.hasNext()) {
+                    Map.Entry pair = (Map.Entry) messageFields.next();
                     event.attribute(String.valueOf(pair.getKey()), String.valueOf(pair.getValue()));
                 }
             }
