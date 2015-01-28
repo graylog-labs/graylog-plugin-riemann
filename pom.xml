@@ -17,7 +17,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.7</maven.compiler.source>
         <maven.compiler.target>1.7</maven.compiler.target>
-        <graylog2.version>0.92.3</graylog2.version>
+        <graylog2.version>1.0.0-beta.3</graylog2.version>
         <graylog2.plugin-dir>/usr/share/graylog2-server/plugin</graylog2.plugin-dir>
     </properties>
 

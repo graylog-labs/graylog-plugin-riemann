@@ -4,16 +4,19 @@ import com.aphyr.riemann.Proto;
 import com.aphyr.riemann.client.EventDSL;
 import com.aphyr.riemann.client.RiemannClient;
 import com.google.common.collect.ImmutableMap;
+import com.google.inject.assistedinject.Assisted;
 import org.graylog2.plugin.Message;
 import org.graylog2.plugin.configuration.Configuration;
 import org.graylog2.plugin.configuration.ConfigurationRequest;
 import org.graylog2.plugin.configuration.fields.*;
 import org.graylog2.plugin.outputs.MessageOutput;
+import org.graylog2.plugin.outputs.MessageOutputConfigurationException;
 import org.graylog2.plugin.streams.Stream;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.inject.Inject;
 import java.io.IOException;
 import java.net.ProtocolException;
 import java.util.*;
@@ -32,9 +35,9 @@ public class RiemannOutput implements MessageOutput{
     private Configuration configuration;
     private RiemannClient riemannClient;
 
-    @Override
-    public void initialize(Configuration config) {
-        this.configuration = config;
+    @Inject
+    public RiemannOutput(@Assisted Stream stream, @Assisted Configuration configuration) throws MessageOutputConfigurationException {
+        this.configuration = configuration;
 
         try {
             if (configuration.getString(CK_RIEMANN_PROTOCOL).equals("TCP")) {
@@ -116,58 +119,61 @@ public class RiemannOutput implements MessageOutput{
         isRunning.set(false);
     }
 
-    @Override
-    public ConfigurationRequest getRequestedConfiguration() {
-        final ConfigurationRequest configurationRequest = new ConfigurationRequest();
+    public interface Factory extends MessageOutput.Factory<RiemannOutput> {
+        @Override
+        RiemannOutput create(Stream stream, Configuration configuration);
 
-        configurationRequest.addField(new TextField(
-                        CK_RIEMANN_HOST, "Riemann Host", "",
-                        "Hostname of your Riemann instance",
-                        ConfigurationField.Optional.NOT_OPTIONAL)
-        );
+        @Override
+        Config getConfig();
 
-        configurationRequest.addField(new NumberField(
-                        CK_RIEMANN_PORT, "Riemann Port", 5555,
-                        "Port of your Riemann instance",
-                        ConfigurationField.Optional.OPTIONAL)
-        );
-
-        final Map<String, String> protocols = ImmutableMap.of(
-                "TCP", "TCP",
-                "UDP", "UDP");
-        configurationRequest.addField(new DropdownField(
-                        CK_RIEMANN_PROTOCOL, "Riemann Protocol", "TCP", protocols,
-                        "Protocol that should be used to talk to Riemann",
-                        ConfigurationField.Optional.OPTIONAL)
-        );
-
-        configurationRequest.addField(new NumberField(
-                        CK_EVENT_TTL, "Event TTL", 60,
-                        "Time in seconds that an event is considered vaild",
-                        ConfigurationField.Optional.OPTIONAL)
-        );
-
-        configurationRequest.addField(new BooleanField(
-                        CK_MAP_FIELDS, "Create custom event fields", true,
-                        "Convert message fields automatically to custom event fields")
-        );
-
-        return configurationRequest;
+        @Override
+        Descriptor getDescriptor();
     }
 
-    @Override
-    public String getName() {
-        return "Riemann Output";
+    public static class Config extends MessageOutput.Config {
+        @Override
+        public ConfigurationRequest getRequestedConfiguration() {
+            final ConfigurationRequest configurationRequest = new ConfigurationRequest();
+
+            configurationRequest.addField(new TextField(
+                            CK_RIEMANN_HOST, "Riemann Host", "",
+                            "Hostname of your Riemann instance",
+                            ConfigurationField.Optional.NOT_OPTIONAL)
+            );
+
+            configurationRequest.addField(new NumberField(
+                            CK_RIEMANN_PORT, "Riemann Port", 5555,
+                            "Port of your Riemann instance",
+                            ConfigurationField.Optional.OPTIONAL)
+            );
+
+            final Map<String, String> protocols = ImmutableMap.of(
+                    "TCP", "TCP",
+                    "UDP", "UDP");
+            configurationRequest.addField(new DropdownField(
+                            CK_RIEMANN_PROTOCOL, "Riemann Protocol", "TCP", protocols,
+                            "Protocol that should be used to talk to Riemann",
+                            ConfigurationField.Optional.OPTIONAL)
+            );
+
+            configurationRequest.addField(new NumberField(
+                            CK_EVENT_TTL, "Event TTL", 60,
+                            "Time in seconds that an event is considered vaild",
+                            ConfigurationField.Optional.OPTIONAL)
+            );
+
+            configurationRequest.addField(new BooleanField(
+                            CK_MAP_FIELDS, "Create custom event fields", true,
+                            "Convert message fields automatically to custom event fields")
+            );
+
+            return configurationRequest;
+        }
     }
 
-    @Override
-    public String getHumanName() {
-        return getName();
+    public static class Descriptor extends MessageOutput.Descriptor {
+        public Descriptor() {
+            super("Riemann Output", false, "", "An output plugin sending Riemann events over TCP or UDP");
+        }
     }
-
-    @Override
-    public String getLinkToDocs() {
-        return "http://graylog2.org";
-    }
-
 }

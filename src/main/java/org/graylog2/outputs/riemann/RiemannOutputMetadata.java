@@ -1,9 +1,12 @@
 package org.graylog2.outputs.riemann;
 
 import org.graylog2.plugin.PluginMetaData;
+import org.graylog2.plugin.ServerStatus;
 import org.graylog2.plugin.Version;
 
 import java.net.URI;
+import java.util.EnumSet;
+import java.util.Set;
 
 public class RiemannOutputMetadata implements PluginMetaData {
     @Override
@@ -23,12 +26,12 @@ public class RiemannOutputMetadata implements PluginMetaData {
 
     @Override
     public URI getURL() {
-        return URI.create("http://www.torch.sh");
+        return URI.create("http://www.graylog2.org");
     }
 
     @Override
     public Version getVersion() {
-        return new Version(0, 93, 0);
+        return new Version(1, 0, 0);
     }
 
     @Override
@@ -38,6 +41,11 @@ public class RiemannOutputMetadata implements PluginMetaData {
 
     @Override
     public Version getRequiredVersion() {
-        return new Version(0, 93, 0);
+        return new Version(1, 0, 0);
+    }
+
+    @Override
+    public Set<ServerStatus.Capability> getRequiredCapabilities() {
+        return EnumSet.of(ServerStatus.Capability.SERVER);
     }
 }
