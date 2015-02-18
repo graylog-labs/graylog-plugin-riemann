@@ -21,12 +21,12 @@ public class RiemannOutputMetadata implements PluginMetaData {
 
     @Override
     public String getAuthor() {
-        return "TORCH GmbH";
+        return "Graylog, Inc.";
     }
 
     @Override
     public URI getURL() {
-        return URI.create("http://www.graylog2.org");
+        return URI.create("https://www.graylog.org");
     }
 
     @Override

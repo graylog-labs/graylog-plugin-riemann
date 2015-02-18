@@ -1,7 +1,7 @@
 Riemann output plugin
-=============================
+=====================
 
-An output plugin for integrating [Riemann](http://riemann.io) into [Graylog2](http://www.graylog2.org).
+An output plugin for integrating [Riemann](http://riemann.io) with [Graylog](https://www.graylog.org).
 
 ## Build
 
@@ -15,7 +15,7 @@ Thanks to Henrik Johansen and Region Syddanmark for sponsorship!
 
 ## License
 
-Copyright (c) 2015 TORCH GmbH
+Copyright (c) 2015 Graylog, Inc.
 
 This library is licensed under the Apache License, Version 2.0.
 
