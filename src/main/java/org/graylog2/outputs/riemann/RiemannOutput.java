@@ -34,6 +34,7 @@ public class RiemannOutput implements MessageOutput{
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
     private Configuration configuration;
     private RiemannClient riemannClient;
+    private boolean Disconnecting = false;
 
     @Inject
     public RiemannOutput(@Assisted Stream stream, @Assisted Configuration configuration) throws MessageOutputConfigurationException {
@@ -49,6 +50,7 @@ public class RiemannOutput implements MessageOutput{
             } else {
                 throw new ProtocolException("Unsupported protocol");
             }
+            Disconnecting = false;
             riemannClient.connect();
         } catch (IOException e) {
             LOG.error("Can not connect to Riemann server " + configuration.getString(CK_RIEMANN_HOST), e);
@@ -90,9 +92,11 @@ public class RiemannOutput implements MessageOutput{
                 }
             }
 
-            final Proto.Msg response = event.send().deref(5, java.util.concurrent.TimeUnit.SECONDS);
-            if (!response.getOk()) {
-                throw new TimeoutException("Timed out");
+            if (!Disconnecting) {
+                final Proto.Msg response = event.send().deref(5, java.util.concurrent.TimeUnit.SECONDS);
+                if (!response.getOk()) {
+                    throw new TimeoutException("Can not send event - Timeout");
+                }
             }
         } catch (UnsupportedOperationException e) {
             // open issue https://github.com/aphyr/riemann-java-client/issues/38
@@ -112,7 +116,13 @@ public class RiemannOutput implements MessageOutput{
 
     @Override
     public void stop() {
-        LOG.info("Stopping");
+        LOG.info("Stopping Riemann output");
+        Disconnecting = true;
+        try {
+            Thread.sleep(1500);
+        } catch(InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
         if (riemannClient != null) {
             riemannClient.close();
         }
