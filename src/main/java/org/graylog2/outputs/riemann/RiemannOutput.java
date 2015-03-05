@@ -19,8 +19,11 @@ import org.slf4j.LoggerFactory;
 import javax.inject.Inject;
 import java.io.IOException;
 import java.net.ProtocolException;
-import java.util.*;
-import java.util.concurrent.TimeoutException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class RiemannOutput implements MessageOutput{
@@ -34,7 +37,25 @@ public class RiemannOutput implements MessageOutput{
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
     private Configuration configuration;
     private RiemannClient riemannClient;
-    private boolean Disconnecting = false;
+    private boolean disconnecting = false;
+    private boolean needReconnect = false;
+
+    Runnable reconnectHandler = new Runnable()
+    {
+        @Override
+        public void run() {
+            while (true) {
+                try {
+                    if (needReconnect) {
+                        reconnect();
+                    }
+                    Thread.sleep(5000);
+                } catch (Exception e) {
+                    LOG.error("Riemann reconnect handler crashed!");
+                }
+            }
+        }
+    };
 
     @Inject
     public RiemannOutput(@Assisted Stream stream, @Assisted Configuration configuration) throws MessageOutputConfigurationException {
@@ -50,11 +71,14 @@ public class RiemannOutput implements MessageOutput{
             } else {
                 throw new ProtocolException("Unsupported protocol");
             }
-            Disconnecting = false;
+            disconnecting = false;
+            needReconnect = false;
             riemannClient.connect();
         } catch (IOException e) {
             LOG.error("Can not connect to Riemann server " + configuration.getString(CK_RIEMANN_HOST), e);
         }
+
+        new Thread(reconnectHandler).start();
 
         isRunning.set(true);
     }
@@ -92,17 +116,20 @@ public class RiemannOutput implements MessageOutput{
                 }
             }
 
-            if (!Disconnecting) {
-                final Proto.Msg response = event.send().deref(5, java.util.concurrent.TimeUnit.SECONDS);
-                if (!response.getOk()) {
-                    throw new TimeoutException("Can not send event - Timeout");
+            if (!disconnecting && !needReconnect) {
+                final Proto.Msg response = event.send().deref(300, TimeUnit.MILLISECONDS);
+                if (response != null && !response.getOk()) {
+                    //throw new TimeoutException("Can not send event - Timeout");
                 }
             }
+
         } catch (UnsupportedOperationException e) {
             // open issue https://github.com/aphyr/riemann-java-client/issues/38
+        } catch (java.io.IOException e) {
+            needReconnect = true;
         } catch (Exception e) {
-            e.printStackTrace();
-            throw new IOException("Can not send event to Riemann server");
+            //e.printStackTrace();
+            LOG.error("Unable to send event to Riemann server");
         }
     }
 
@@ -117,7 +144,7 @@ public class RiemannOutput implements MessageOutput{
     @Override
     public void stop() {
         LOG.info("Stopping Riemann output");
-        Disconnecting = true;
+        disconnecting = true;
         try {
             Thread.sleep(1500);
         } catch(InterruptedException ex) {
@@ -127,6 +154,17 @@ public class RiemannOutput implements MessageOutput{
             riemannClient.close();
         }
         isRunning.set(false);
+    }
+
+    private void reconnect() {
+        try {
+            LOG.error("Trying to reconnect to Riemann server...");
+            riemannClient.reconnect();
+        } catch (Exception e) {
+            LOG.error("Reconnect to Riemann server failed.");
+            return;
+        }
+        needReconnect = false;
     }
 
     public interface Factory extends MessageOutput.Factory<RiemannOutput> {
