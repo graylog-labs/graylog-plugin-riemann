@@ -8,8 +8,8 @@ addons:
       - rpm
 before_deploy:
   - mvn jdeb:jdeb && export RELEASE_DEB_FILE=$(ls target/*.deb)
-  - mvn rpm:rpm && export RELEASE_RPM_FILE=$(ls target/rpm/graylog2-plugin-output-riemann/RPMS/noarch/graylog2-plugin-output-riemann-*.rpm)
-  - export RELEASE_PKG_FILE=$(ls target/rpm/graylog-plugin-output-riemann/RPMS/noarch/graylog-plugin-output-riemann-*.jar)
+  - mvn rpm:rpm && export RELEASE_RPM_FILE=$(ls target/rpm/graylog-plugin-output-riemann/RPMS/noarch/graylog-plugin-output-riemann-*.rpm)
+  - export RELEASE_PKG_FILE=$(ls target/graylog-plugin-output-riemann-*.jar)
   - echo "Deploying release to GitHub releases"
 deploy:
   provider: releases
