@@ -1,8 +1,7 @@
 package org.graylog2.outputs.riemann;
 
 import com.aphyr.riemann.Proto;
-import com.aphyr.riemann.client.EventDSL;
-import com.aphyr.riemann.client.RiemannClient;
+import com.aphyr.riemann.client.*;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.assistedinject.Assisted;
 import org.graylog2.plugin.Message;
@@ -23,6 +22,9 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -30,15 +32,18 @@ public class RiemannOutput implements MessageOutput{
     private static final String CK_RIEMANN_HOST = "riemann_host";
     private static final String CK_RIEMANN_PORT = "riemann_port";
     private static final String CK_RIEMANN_PROTOCOL = "riemann_protocol";
+    private static final String CK_RIEMANN_TCP_BATCH = "tcp_batch_size";
     private static final String CK_EVENT_TTL = "event_ttl";
     private static final String CK_MAP_FIELDS = "map_fields";
 
     private static final Logger LOG = LoggerFactory.getLogger(RiemannOutput.class);
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
+    private AtomicBoolean disconnecting = new AtomicBoolean(false);
+    private AtomicBoolean needReconnect = new AtomicBoolean(false);
     private Configuration configuration;
-    private RiemannClient riemannClient;
-    private boolean disconnecting = false;
-    private boolean needReconnect = false;
+    private IRiemannClient riemannClient;
+    final ExecutorService executor = new ThreadPoolExecutor(1, 5, 5000, TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<Runnable>());
 
     Runnable reconnectHandler = new Runnable()
     {
@@ -46,7 +51,7 @@ public class RiemannOutput implements MessageOutput{
         public void run() {
             while (true) {
                 try {
-                    if (needReconnect) {
+                    if (needReconnect.get()) {
                         reconnect();
                     }
                     Thread.sleep(5000);
@@ -57,29 +62,32 @@ public class RiemannOutput implements MessageOutput{
         }
     };
 
+    class DerefHandler implements Runnable {
+        IPromise promise;
+        DerefHandler(IPromise p) { this.promise = p; }
+        public void run() {
+            try {
+                promise.deref();
+            } catch (IOException e) {
+                LOG.info("Riemann output too slow, losing messages!");
+            }
+        }
+    }
+
     @Inject
     public RiemannOutput(@Assisted Stream stream, @Assisted Configuration configuration) throws MessageOutputConfigurationException {
         this.configuration = configuration;
 
         try {
-            if (configuration.getString(CK_RIEMANN_PROTOCOL).equals("TCP")) {
-                this.riemannClient = RiemannClient.tcp(configuration.getString(CK_RIEMANN_HOST),
-                        configuration.getInt(CK_RIEMANN_PORT));
-            } else if (configuration.getString(CK_RIEMANN_PROTOCOL).equals("UDP")) {
-                this.riemannClient = RiemannClient.udp(configuration.getString(CK_RIEMANN_HOST),
-                        configuration.getInt(CK_RIEMANN_PORT));
-            } else {
-                throw new ProtocolException("Unsupported protocol");
-            }
-            disconnecting = false;
-            needReconnect = false;
+            this.riemannClient = getClient(configuration.getString(CK_RIEMANN_PROTOCOL));
+            disconnecting.set(false);
+            needReconnect.set(false);
             riemannClient.connect();
         } catch (IOException e) {
             LOG.error("Can not connect to Riemann server " + configuration.getString(CK_RIEMANN_HOST), e);
         }
 
         new Thread(reconnectHandler).start();
-
         isRunning.set(true);
     }
 
@@ -90,45 +98,17 @@ public class RiemannOutput implements MessageOutput{
 
     @Override
     public void write(Message message) throws Exception {
-        Iterator messageFields = message.getFields().entrySet().iterator();
-        Iterator messageStreams = message.getStreams().iterator();
-        List<String> messageStreamNames = new ArrayList<>();
-
         try {
-            EventDSL event = riemannClient.event()
-                    .host(message.getSource())
-                    .time(message.getFieldAs(DateTime.class, "timestamp").getMillis())
-                    .description(message.getMessage())
-                    .ttl(configuration.getInt(CK_EVENT_TTL));
-
-            while (messageStreams.hasNext()) {
-                Stream stream = (Stream) messageStreams.next();
-                messageStreamNames.add(stream.getTitle());
-            }
-            if (! messageStreamNames.isEmpty()) {
-                event.tags(messageStreamNames);
-            }
-
-            if (configuration.getBoolean(CK_MAP_FIELDS)) {
-                while (messageFields.hasNext()) {
-                    Map.Entry pair = (Map.Entry) messageFields.next();
-                    event.attribute(String.valueOf(pair.getKey()), String.valueOf(pair.getValue()));
-                }
-            }
-
-            if (!disconnecting && !needReconnect) {
-                final Proto.Msg response = event.send().deref(300, TimeUnit.MILLISECONDS);
-                if (response != null && !response.getOk()) {
-                    //throw new TimeoutException("Can not send event - Timeout");
-                }
+            if (!disconnecting.get() && !needReconnect.get()) {
+                sendEvent(getEventFromMessage(message));
             }
 
         } catch (UnsupportedOperationException e) {
             // open issue https://github.com/aphyr/riemann-java-client/issues/38
         } catch (java.io.IOException e) {
-            needReconnect = true;
+            needReconnect.set(true);
         } catch (Exception e) {
-            //e.printStackTrace();
+            e.printStackTrace();
             LOG.error("Unable to send event to Riemann server");
         }
     }
@@ -138,33 +118,85 @@ public class RiemannOutput implements MessageOutput{
         for (Message message : messages) {
             write(message);
         }
-
     }
 
     @Override
     public void stop() {
         LOG.info("Stopping Riemann output");
-        disconnecting = true;
-        try {
-            Thread.sleep(1500);
-        } catch(InterruptedException ex) {
-            Thread.currentThread().interrupt();
-        }
+        disconnecting.set(true);
         if (riemannClient != null) {
             riemannClient.close();
         }
         isRunning.set(false);
+        executor.shutdown();
     }
 
     private void reconnect() {
         try {
-            LOG.error("Trying to reconnect to Riemann server...");
+            LOG.info("Trying to reconnect to Riemann server...");
             riemannClient.reconnect();
         } catch (Exception e) {
             LOG.error("Reconnect to Riemann server failed.");
             return;
         }
-        needReconnect = false;
+        needReconnect.set(false);
+    }
+
+    private IRiemannClient getClient(String protocol) throws IOException {
+        switch (protocol) {
+            case "TCP":
+                try {
+                    return new RiemannBatchClient(RiemannClient.tcp(configuration.getString(CK_RIEMANN_HOST),
+                            configuration.getInt(CK_RIEMANN_PORT)), configuration.getInt(CK_RIEMANN_TCP_BATCH));
+                } catch (UnsupportedJVMException e) {
+                    LOG.error("JVM doesn't support batch client, falling back to slower implementation");
+                    return RiemannClient.tcp(configuration.getString(CK_RIEMANN_HOST),
+                            configuration.getInt(CK_RIEMANN_PORT));
+                }
+            case "UDP":
+                return RiemannClient.udp(configuration.getString(CK_RIEMANN_HOST),
+                        configuration.getInt(CK_RIEMANN_PORT));
+            default:
+                LOG.error("Unsupported Riemann protocol chosen");
+                throw new ProtocolException("Unsupported protocol");
+        }
+    }
+
+    private Proto.Event getEventFromMessage(Message message) {
+        Iterator messageFields = message.getFields().entrySet().iterator();
+        Iterator messageStreams = message.getStreams().iterator();
+        List<String> messageStreamNames = new ArrayList<>();
+
+        Proto.Event.Builder event = Proto.Event.newBuilder()
+                .setHost(message.getSource())
+                .setTime(message.getFieldAs(DateTime.class, "timestamp").getMillis())
+                .setDescription(message.getMessage())
+                .setTtl(configuration.getInt(CK_EVENT_TTL));
+
+        while (messageStreams.hasNext()) {
+            Stream stream = (Stream) messageStreams.next();
+            messageStreamNames.add(stream.getTitle());
+        }
+        if (! messageStreamNames.isEmpty()) {
+            event.addAllTags(messageStreamNames);
+        }
+
+        if (configuration.getBoolean(CK_MAP_FIELDS)) {
+            while (messageFields.hasNext()) {
+                Map.Entry pair = (Map.Entry) messageFields.next();
+                event.addAttributes(Proto.Attribute.newBuilder()
+                        .setKey(String.valueOf(pair.getKey()))
+                        .setValue(String.valueOf(pair.getValue())) );
+            }
+        }
+        return event.build();
+    }
+
+    private void sendEvent(Proto.Event event) throws IOException {
+        final IPromise response = riemannClient.sendEvent(event);
+        if (configuration.getString(CK_RIEMANN_PROTOCOL).equals("TCP")) {
+            executor.execute(new DerefHandler(response));
+        }
     }
 
     public interface Factory extends MessageOutput.Factory<RiemannOutput> {
@@ -201,6 +233,12 @@ public class RiemannOutput implements MessageOutput{
             configurationRequest.addField(new DropdownField(
                             CK_RIEMANN_PROTOCOL, "Riemann Protocol", "TCP", protocols,
                             "Protocol that should be used to talk to Riemann",
+                            ConfigurationField.Optional.OPTIONAL)
+            );
+
+            configurationRequest.addField(new NumberField(
+                            CK_RIEMANN_TCP_BATCH, "TCP Batch Size", 50,
+                            "Number of messages that get cached before writing to Riemann",
                             ConfigurationField.Optional.OPTIONAL)
             );
 
