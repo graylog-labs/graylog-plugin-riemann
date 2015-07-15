@@ -1,6 +1,5 @@
 package org.graylog2.outputs.riemann;
 
-import com.aphyr.riemann.Proto;
 import com.aphyr.riemann.client.*;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.assistedinject.Assisted;
@@ -22,10 +21,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class RiemannOutput implements MessageOutput{
@@ -42,8 +38,6 @@ public class RiemannOutput implements MessageOutput{
     private AtomicBoolean needReconnect = new AtomicBoolean(false);
     private Configuration configuration;
     private IRiemannClient riemannClient;
-    final ExecutorService executor = new ThreadPoolExecutor(1, 5, 5000, TimeUnit.MILLISECONDS,
-            new LinkedBlockingQueue<Runnable>());
 
     Runnable reconnectHandler = new Runnable()
     {
@@ -61,18 +55,6 @@ public class RiemannOutput implements MessageOutput{
             }
         }
     };
-
-    class DerefHandler implements Runnable {
-        IPromise promise;
-        DerefHandler(IPromise p) { this.promise = p; }
-        public void run() {
-            try {
-                promise.deref();
-            } catch (IOException e) {
-                LOG.info("Riemann output too slow, losing messages!");
-            }
-        }
-    }
 
     @Inject
     public RiemannOutput(@Assisted Stream stream, @Assisted Configuration configuration) throws MessageOutputConfigurationException {
@@ -123,12 +105,13 @@ public class RiemannOutput implements MessageOutput{
     @Override
     public void stop() {
         LOG.info("Stopping Riemann output");
+
         disconnecting.set(true);
         if (riemannClient != null) {
             riemannClient.close();
         }
+
         isRunning.set(false);
-        executor.shutdown();
     }
 
     private void reconnect() {
@@ -162,40 +145,46 @@ public class RiemannOutput implements MessageOutput{
         }
     }
 
-    private Proto.Event getEventFromMessage(Message message) {
+    private EventDSL getEventFromMessage(Message message) {
         Iterator messageFields = message.getFields().entrySet().iterator();
         Iterator messageStreams = message.getStreams().iterator();
         List<String> messageStreamNames = new ArrayList<>();
 
-        Proto.Event.Builder event = Proto.Event.newBuilder()
-                .setHost(message.getSource())
-                .setTime(message.getFieldAs(DateTime.class, "timestamp").getMillis())
-                .setDescription(message.getMessage())
-                .setTtl(configuration.getInt(CK_EVENT_TTL));
+        EventDSL event = riemannClient.event()
+                .host(message.getSource())
+                .time(message.getFieldAs(DateTime.class, "timestamp").getMillis())
+                .description(message.getMessage())
+                .ttl(configuration.getInt(CK_EVENT_TTL));
 
         while (messageStreams.hasNext()) {
             Stream stream = (Stream) messageStreams.next();
             messageStreamNames.add(stream.getTitle());
         }
         if (! messageStreamNames.isEmpty()) {
-            event.addAllTags(messageStreamNames);
+            event.tags(messageStreamNames);
         }
 
         if (configuration.getBoolean(CK_MAP_FIELDS)) {
             while (messageFields.hasNext()) {
                 Map.Entry pair = (Map.Entry) messageFields.next();
-                event.addAttributes(Proto.Attribute.newBuilder()
-                        .setKey(String.valueOf(pair.getKey()))
-                        .setValue(String.valueOf(pair.getValue())) );
+                event.attribute(String.valueOf(pair.getKey()), String.valueOf(pair.getValue()));
             }
         }
-        return event.build();
+        return event;
     }
 
-    private void sendEvent(Proto.Event event) throws IOException {
-        final IPromise response = riemannClient.sendEvent(event);
+    private void sendEvent(EventDSL event) throws IOException {
+        final IPromise response = event.send();
+        if (response == null) {
+            LOG.error("Can not send Riemann event");
+        }
+
         if (configuration.getString(CK_RIEMANN_PROTOCOL).equals("TCP")) {
-            executor.execute(new DerefHandler(response));
+            try {
+                //executor.execute(new DerefHandler(response));
+            } catch (RejectedExecutionException e) {
+                LOG.error("Riemann processing too slow, can not guarantee event delivery");
+            }
         }
     }
 
