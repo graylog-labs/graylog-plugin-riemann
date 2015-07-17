@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class RiemannOutput implements MessageOutput{
@@ -179,12 +178,8 @@ public class RiemannOutput implements MessageOutput{
             LOG.error("Can not send Riemann event");
         }
 
-        if (configuration.getString(CK_RIEMANN_PROTOCOL).equals("TCP")) {
-            try {
-                //executor.execute(new DerefHandler(response));
-            } catch (RejectedExecutionException e) {
-                LOG.error("Riemann processing too slow, can not guarantee event delivery");
-            }
+        if (configuration.getString(CK_RIEMANN_PROTOCOL).equals("UDP")) {
+            response.deref();
         }
     }
 
