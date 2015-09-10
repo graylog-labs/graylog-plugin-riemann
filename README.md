@@ -9,7 +9,7 @@ An output plugin for integrating [Riemann](http://riemann.io) with [Graylog](htt
 
 ## Installation
 
-[Download the plugin](https://github.com/Graylog2/graylog-plugin-hipchat/releases)
+[Download the plugin](https://github.com/Graylog2/graylog-plugin-riemann/releases)
 and place the `.jar` file in your Graylog plugin directory. The plugin directory
 is the `plugins/` folder relative from your `graylog-server` directory by default
 and can be configured in your `graylog.conf` file.
