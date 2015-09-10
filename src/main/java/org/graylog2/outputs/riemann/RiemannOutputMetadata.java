@@ -31,7 +31,7 @@ public class RiemannOutputMetadata implements PluginMetaData {
 
     @Override
     public Version getVersion() {
-        return new Version(1, 1, 2);
+        return new Version(1, 1, 3);
     }
 
     @Override
