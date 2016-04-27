@@ -5,7 +5,7 @@ Riemann Plugin for Graylog
 
 An output plugin for integrating [Riemann](http://riemann.io) with [Graylog](https://www.graylog.org).
 
-**Required Graylog version:** 1.0 and later
+**Required Graylog version:** 2.0.0 and later
 
 ## Installation
 
@@ -29,7 +29,7 @@ You will now receive messages from this stream in Riemann.
 
 ## Build
 
-This project is using Maven and requires Java 7 or higher.
+This project is using Maven 3 and requires Java 8 or higher.
 
 You can build a plugin (JAR) with `mvn package`.
 
@@ -45,7 +45,7 @@ $ mvn release:prepare
 $ mvn release:perform
 ```
 
-This sets the version numbers, creates a tag and pushes to GitHub. TravisCI will build the release artifacts and upload to GitHub automatically.
+This sets the version numbers, creates a tag and pushes to GitHub. Travis CI will build the release artifacts and upload to GitHub automatically.
 
 ## Credits
 

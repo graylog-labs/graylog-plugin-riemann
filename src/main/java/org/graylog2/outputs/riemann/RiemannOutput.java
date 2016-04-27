@@ -56,7 +56,7 @@ public class RiemannOutput implements MessageOutput{
     };
 
     @Inject
-    public RiemannOutput(@Assisted Stream stream, @Assisted Configuration configuration) throws MessageOutputConfigurationException {
+    public RiemannOutput(@Assisted Configuration configuration) throws MessageOutputConfigurationException {
         this.configuration = configuration;
 
         try {
