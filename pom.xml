@@ -30,7 +30,7 @@
         <maven.install.skip>true</maven.install.skip>
         <maven.deploy.skip>true</maven.deploy.skip>
         <maven.site.skip>true</maven.site.skip>
-        <graylog2.version>2.0.0</graylog2.version>
+        <graylog2.version>2.0.3</graylog2.version>
         <graylog2.plugin-dir>/usr/share/graylog-server/plugin</graylog2.plugin-dir>
     </properties>
 
@@ -49,9 +49,9 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.aphyr</groupId>
+            <groupId>io.riemann</groupId>
             <artifactId>riemann-java-client</artifactId>
-            <version>0.4.1</version>
+            <version>0.4.2</version>
         </dependency>
     </dependencies>
 

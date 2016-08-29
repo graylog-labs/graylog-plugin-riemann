@@ -1,8 +1,8 @@
 package org.graylog2.outputs.riemann;
 
-import com.aphyr.riemann.client.*;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.assistedinject.Assisted;
+import io.riemann.riemann.client.*;
 import org.graylog2.plugin.Message;
 import org.graylog2.plugin.configuration.Configuration;
 import org.graylog2.plugin.configuration.ConfigurationRequest;
